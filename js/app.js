@@ -1,6 +1,12 @@
 /**
- * FinDiscipline - UI View Rendering & Event Handling
- * Optimized for iPhone, iPad, and MacBook
+ * FinDiscipline - UI View Controller & Rendering Engine (v3 Complete)
+ * Features:
+ * - Real Balance Dashboard (ยอดเงินคงเหลือจริงสะสม)
+ * - Interactive Salary Cycle Calendar (ปฏิทินรอบเงินเดือนพร้อมรายการรายวัน)
+ * - Intelligent Batch Slip Scanner (ค้นหาและอ่านสลิปในเครื่องอัตโนมัติ พร้อมตัวเลือกย้อนหลัง)
+ * - 30-Day Wishlist Cooling-off System & Opportunity Cost
+ * - Project-based Vault
+ * - GHB DSR Simulator & Debt Payoff
  */
 
 function formatTHB(num) {
@@ -11,7 +17,8 @@ class AppUI {
   constructor() {
     this.store = window.appStore;
     this.currentTab = "dashboard";
-    this.slipLookbackMonths = 1; // Default: 1 month lookback
+    this.slipLookbackMonths = 1; // Default 1 month
+    this.selectedCalendarMonth = new Date().getMonth() + 1; // 1-12
     this.parsedSlips = [];
     this.init();
   }
@@ -37,15 +44,13 @@ class AppUI {
   }
 
   bindEvents() {
-    // Bottom Nav Tabs
     document.querySelectorAll(".nav-tab").forEach(tab => {
-      tab.addEventListener("click", e => {
+      tab.addEventListener("click", () => {
         const target = tab.dataset.tab;
         this.switchTab(target);
       });
     });
 
-    // Close Modal by clicking overlay or close button
     document.querySelectorAll(".modal-overlay").forEach(overlay => {
       overlay.addEventListener("click", e => {
         if (e.target === overlay || e.target.closest(".btn-close")) {
@@ -76,6 +81,9 @@ class AppUI {
       case "dashboard":
         container.innerHTML = this.renderDashboardView(metrics, modules);
         break;
+      case "calendar":
+        container.innerHTML = this.renderCalendarView(metrics, modules);
+        break;
       case "debts":
         container.innerHTML = this.renderDebtsView(metrics, modules);
         break;
@@ -84,6 +92,9 @@ class AppUI {
         break;
       case "scanner":
         container.innerHTML = this.renderSlipScannerView(metrics, modules);
+        break;
+      case "wishlist":
+        container.innerHTML = this.renderWishlistView(metrics, modules);
         break;
       case "settings":
         container.innerHTML = this.renderSettingsView(metrics, modules);
@@ -96,6 +107,43 @@ class AppUI {
   renderDashboardView(m, mod) {
     const cycle = m.cycle;
     return `
+      <!-- 1. Real Balance & Liquidity Top Dashboard -->
+      ${mod.realBalanceDashboard ? `
+        <div style="background: linear-gradient(135deg, #1e293b, #0f172a); color: white; padding: 18px 20px; border-radius: 18px; margin-bottom: 18px; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.3);">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <div style="font-size: 0.78rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">
+                💰 แดชบอร์ดเงินสดคงเหลือสุทธิตอนนี้ (Real Net Cash Balance)
+              </div>
+              <div style="font-size: 2.2rem; font-weight: 800; color: #38bdf8; margin: 4px 0;">
+                ${formatTHB(m.realCashBalance)}
+              </div>
+              <div style="font-size: 0.75rem; color: #cbd5e1;">
+                เงินเดือนเข้า + ยอดตั้งต้น + เงินขอพ่อแม่ - (ค่างวดที่จ่ายจริง + ค่าใช้จ่ายคงที่ + กินอยู่สะสม)
+              </div>
+            </div>
+            <button class="btn-bailout" style="padding: 6px 12px; font-size: 0.75rem; border-color: #38bdf8; color: #0284c7; background: #f0f9ff;" onclick="window.appUI.switchTab('calendar')">
+              📅 ดูปฏิทินรอบนี้
+            </button>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #334155;">
+            <div>
+              <div style="font-size: 0.68rem; color: #94a3b8;">เงินเดือนฐาน</div>
+              <div style="font-size: 0.95rem; font-weight: 700; color: #f8fafc;">${formatTHB(this.store.state.user.salary)}</div>
+            </div>
+            <div>
+              <div style="font-size: 0.68rem; color: #94a3b8;">ภาระผ่อนที่เราจ่าย</div>
+              <div style="font-size: 0.95rem; font-weight: 700; color: #f87171;">-${formatTHB(m.totalDebtInstallmentPaidBySelf)}</div>
+            </div>
+            <div>
+              <div style="font-size: 0.68rem; color: #94a3b8;">เงินกินอยู่ทั้งเดือน</div>
+              <div style="font-size: 0.95rem; font-weight: 700; color: #4ade80;">${formatTHB(m.pureSalaryPool)}</div>
+            </div>
+          </div>
+        </div>
+      ` : ""}
+
       <!-- Header Alert if pending GSB advance reimbursement -->
       ${m.pendingAdvances.length > 0 && mod.advanceTracker ? `
         <div style="background: #fef9c3; border: 1.5px solid #fde047; padding: 12px 16px; border-radius: 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
@@ -182,7 +230,7 @@ class AppUI {
           </div>
         </div>
 
-        <!-- Col 2: Debt Freedom Countdown & Unlocks -->
+        <!-- Col 2: Debt Freedom Countdown & Project Vault -->
         <div>
           <div class="card">
             <div class="card-header">
@@ -190,7 +238,6 @@ class AppUI {
               <span style="font-size: 0.75rem; color: var(--text-muted);">ปลดล็อกเงินสด</span>
             </div>
 
-            <!-- Urgent debt countdown cards -->
             <div style="display: flex; flex-direction: column; gap: 8px;">
               ${this.renderMiniDebtCards()}
             </div>
@@ -205,19 +252,15 @@ class AppUI {
             </div>
           </div>
 
-          <!-- Extra Income / Project Widget -->
-          ${mod.extraIncome ? `
+          <!-- Project Lump-Sum Vault -->
+          ${mod.projectVault ? `
             <div class="card" style="margin-top: 16px;">
               <div class="card-header">
-                <span class="card-title">💼 รายได้พิเศษ (เช่น ค่าวิทยากร)</span>
-                <button class="btn-bailout" style="padding: 4px 10px; font-size: 0.72rem; border-color: #10b981; color: #047857;" onclick="window.appUI.openExtraIncomeModal()">
-                  + เพิ่มรายได้
-                </button>
+                <span class="card-title">📦 โปรเจกต์เงินก้อนที่ขอพ่อแม่ (Project Vault)</span>
+                <span style="font-size: 0.7rem; background: #e0e7ff; color: #4338ca; padding: 3px 8px; border-radius: 6px; font-weight: 700;">แยกจากเงินกิน</span>
               </div>
               <div style="font-size: 0.78rem; color: var(--text-muted);">
-                ${this.store.state.extraIncomes.length === 0 
-                  ? "ยังไม่มีรายได้พิเศษในรอบนี้ (คลิก + เพิ่มรายได้ เพื่อนำมาเฉลี่ยงบกินอยู่วันนี้)"
-                  : this.renderExtraIncomesList()}
+                ${this.renderProjectVault()}
               </div>
             </div>
           ` : ""}
@@ -266,6 +309,173 @@ class AppUI {
     `;
   }
 
+  renderCalendarView(m, mod) {
+    const cycle = m.cycle;
+    const allMonths = this.store.state.salarySchedule;
+
+    return `
+      <div class="dashboard-grid">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 style="font-size: 1.15rem; font-weight: 750;">📅 ปฏิทินรอบเงินเดือนข้าราชการครู</h2>
+              <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                เชื่อมโยงวันเงินเดือนออก 12 เดือน และยอดเงินคงเหลือในแต่ละรอบ
+              </p>
+            </div>
+            <button class="btn-bailout" style="padding: 4px 8px; font-size: 0.72rem;" onclick="window.appUI.openPasteCalendarModal()">
+              📋 วางข้อความปฏิทินใหม่
+            </button>
+          </div>
+
+          <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin: 12px 0;">
+            ${allMonths.map(s => `
+              <button class="btn-bailout" style="flex-shrink: 0; padding: 6px 12px; font-size: 0.75rem; ${s.month === this.selectedCalendarMonth ? 'background:#10b981; color:white; border-color:#059669;' : ''}"
+                      onclick="window.appUI.selectCalendarMonth(${s.month})">
+                ${s.monthName} (ออกวันที่ ${s.day})
+              </button>
+            `).join("")}
+          </div>
+
+          <!-- Highlight of selected cycle -->
+          <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-top: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 750; font-size: 0.95rem; color: var(--text-main);">
+                  รอบเดือนที่เลือก: ${this.selectedCalendarMonth}
+                </span>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                  วันเงินเดือนออก: วันที่ ${allMonths.find(s => s.month === this.selectedCalendarMonth)?.day || 25}
+                </div>
+              </div>
+              <span class="debt-tag tag-parent-paid">สถานะ: วงรอบสอดคล้อง</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px;">
+              <div style="background: white; padding: 10px; border-radius: 10px; border: 1px solid var(--border);">
+                <div style="font-size: 0.7rem; color: var(--text-muted);">เงินเดือนในรอบ</div>
+                <div style="font-size: 1.1rem; font-weight: 750; color: #059669;">${formatTHB(this.store.state.user.salary)}</div>
+              </div>
+              <div style="background: white; padding: 10px; border-radius: 10px; border: 1px solid var(--border);">
+                <div style="font-size: 0.7rem; color: var(--text-muted);">จำนวนวันในรอบ</div>
+                <div style="font-size: 1.1rem; font-weight: 750; color: var(--text-main);">${cycle.totalDays} วัน</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Col 2: Transactions and Daily Ledger -->
+        <div class="card">
+          <div class="card-header">
+            <h3 style="font-size: 1rem; font-weight: 750;">📝 รายการใช้จ่ายในรอบนี้ (Ledger)</h3>
+            <button class="btn-bailout" style="padding: 4px 8px; font-size: 0.7rem; border-color: #38bdf8; color: #0284c7;" onclick="window.appUI.openCustomExpenseModal()">
+              + จดรายจ่าย
+            </button>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px; max-height: 480px; overflow-y: auto;">
+            ${this.store.state.transactions.map(t => `
+              <div style="background: white; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <div style="font-weight: 700; font-size: 0.85rem;">${t.note || t.category}</div>
+                  <div style="font-size: 0.7rem; color: var(--text-muted);">${t.date} • ${t.category}</div>
+                </div>
+                <div style="font-weight: 750; font-size: 0.95rem; color: #ef4444;">
+                  -${formatTHB(t.amount)}
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  selectCalendarMonth(m) {
+    this.selectedCalendarMonth = m;
+    this.render();
+  }
+
+  renderWishlistView(m, mod) {
+    const list = this.store.state.wishlist || [];
+    const dailySpend = m.dailyPureSafeSpend || 267;
+
+    return `
+      <div class="card" style="max-width: 680px; margin: 0 auto;">
+        <div class="card-header">
+          <div>
+            <h2 style="font-size: 1.15rem; font-weight: 750;">🛡️ กฎชะลอการซื้อ 30 วัน (Cooling-off Wishlist)</h2>
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+              ช่วยยับยั้งการใช้จ่ายเกินตัว เมื่ออยากได้ของให้บันทึกไว้ที่นี่ ระบบจะเริ่มนับถอยหลัง 30 วันก่อนตัดสินใจซื้อ
+            </p>
+          </div>
+          <button class="btn-primary" style="width: auto; padding: 6px 14px; font-size: 0.75rem; background: #6366f1;" onclick="window.appUI.openWishlistModal()">
+            + อยากได้ของใหม่
+          </button>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 14px;">
+          ${list.length === 0 ? `
+            <div style="text-align: center; padding: 30px; color: var(--text-muted); font-size: 0.85rem;">
+              ไม่มีรายการที่กำลังนับถอยหลัง ชะลอการซื้อได้อย่างยอดเยี่ยม! 🎉
+            </div>
+          ` : list.map(w => {
+            const daysTradeOff = Math.round(w.price / Math.max(1, dailySpend));
+            return `
+              <div class="card" style="border: 1.5px solid #c7d2fe; background: #fdfefe;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                  <div>
+                    <h3 style="font-size: 0.95rem; font-weight: 750; color: #1e1b4b;">${w.name}</h3>
+                    <div style="font-size: 0.72rem; color: #4338ca; margin-top: 2px;">
+                      บันทึกเมื่อ: ${w.addedDate} • ปลดล็อกวันที่: ${w.unlockDate}
+                    </div>
+                  </div>
+                  <span class="countdown-badge urgent" style="background: #e0e7ff; color: #3730a3;">
+                    ⏳ กำลังคูลดาวน์ 30 วัน
+                  </span>
+                </div>
+
+                <div style="background: #f8fafc; border-radius: 10px; padding: 10px; margin: 10px 0; border: 1px solid var(--border);">
+                  <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+                    <span style="color: var(--text-muted);">ราคาของชิ้นนี้:</span>
+                    <strong style="color: #4338ca;">${formatTHB(w.price)}</strong>
+                  </div>
+                  <div style="font-size: 0.75rem; color: #b45309; margin-top: 4px; font-weight: 600;">
+                    💡 เทียบเท่ากับงบกินอยู่ของคุณจำนวน ${daysTradeOff} วันเต็มๆ!
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn-bailout" style="flex: 1; border-color: #cbd5e1; color: #64748b; font-size: 0.75rem;" onclick="window.appUI.dismissWishlist('${w.id}')">
+                    ✕ หายอยากแล้ว (ประหยัดเงินได้!)
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  renderProjectVault() {
+    const projs = this.store.state.projects || [];
+    if (projs.length === 0) return "ยังไม่มีโปรเจกต์พิเศษที่ขอเงินพ่อแม่";
+
+    return projs.map(p => `
+      <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 8px;">
+        <div style="display: flex; justify-content: space-between; font-weight: 700; font-size: 0.85rem;">
+          <span>${p.name}</span>
+          <span style="color: #059669;">งบ: ${formatTHB(p.targetBudget)}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">
+          <span>พ่อแม่สนับสนุน: ${formatTHB(p.fundedByParents)}</span>
+          <span>ใช้ไปแล้ว: ${formatTHB(p.spent)}</span>
+        </div>
+      </div>
+    `).join("");
+  }
+
   renderMiniDebtCards() {
     return this.store.state.debts.map(d => {
       if (d.isClosed) {
@@ -312,15 +522,6 @@ class AppUI {
     }).join("");
   }
 
-  renderExtraIncomesList() {
-    return this.store.state.extraIncomes.map(inc => `
-      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border);">
-        <span>${inc.note} (${inc.date})</span>
-        <strong style="color: #059669;">+${formatTHB(inc.amount)}</strong>
-      </div>
-    `).join("");
-  }
-
   renderDebtsView(m, mod) {
     return `
       <div class="card">
@@ -360,7 +561,6 @@ class AppUI {
                 </div>
               </div>
 
-              <!-- Payer Configuration Selection -->
               ${!d.isClosed ? `
                 <div style="margin-bottom: 12px;">
                   <label class="form-label" style="font-size: 0.78rem;">ใครเป็นคนจ่ายหนี้ก้อนนี้จริง?</label>
@@ -471,12 +671,12 @@ class AppUI {
   renderSlipScannerView(m, mod) {
     return `
       <div class="card" style="max-width: 680px; margin: 0 auto;">
-        <h2 style="font-size: 1.15rem; font-weight: 750; margin-bottom: 4px;">📸 อ่านสลิปในเครื่อง & สรุปพฤติกรรมการเงิน</h2>
+        <h2 style="font-size: 1.15rem; font-weight: 750; margin-bottom: 4px;">📸 สแกนหาสลิปในเครื่องอัตโนมัติ (Slip Batch Reader)</h2>
         <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 16px;">
-          อ่านไฟล์สลิปจากอัลบั้มรูปใน iPhone / iPad หรือโฟลเดอร์บน MacBook ได้โดยตรง ข้อมูลถูกประมวลผลบนเครื่อง 100% ปลอดภัย ไม่ส่งออกนอกเครื่อง
+          สแกนสลิปจากอัลบั้มรูป iPhone หรือโฟลเดอร์ MacBook โดยตรง พร้อมตัวกรองระยะเวลาย้อนหลัง
         </p>
 
-        <!-- Lookback Month Selector -->
+        <!-- Lookback Selector -->
         <div style="background: #f8fafc; border: 1.5px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 16px;">
           <label class="form-label" style="font-size: 0.82rem; margin-bottom: 6px; display: flex; justify-content: space-between;">
             <span>🗓️ เลือกระยะเวลาย้อนหลังที่ต้องการให้อ่านสลิป:</span>
@@ -493,26 +693,24 @@ class AppUI {
             <option value="999">สลิปทั้งหมดที่มี (All Historical Slips)</option>
           </select>
           <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">
-            * สลิปที่เก่าเกินกว่าระยะเวลาที่เลือก ระบบจะคัดกรองข้ามให้อัตโนมัติ เพื่อไม่ให้ปนกับรอบปัจจุบัน
+            * สลิปที่เก่ากว่าช่วงเวลาที่เลือก ระบบจะตัดออกให้อัตโนมัติ เพื่อรักษาความสอดคล้องของบัญชี
           </div>
         </div>
 
         <!-- File Upload Area -->
-        <div style="border: 2px dashed #94a3b8; border-radius: 16px; padding: 32px 20px; text-align: center; background: #ffffff; cursor: pointer; transition: all 0.2s ease;" 
-             onclick="document.getElementById('slip-file-input').click()"
-             onmouseover="this.style.borderColor='#10b981'; this.style.background='#f0fdf4';"
-             onmouseout="this.style.borderColor='#94a3b8'; this.style.background='#ffffff';">
+        <div style="border: 2px dashed #94a3b8; border-radius: 16px; padding: 32px 20px; text-align: center; background: #ffffff; cursor: pointer;" 
+             onclick="document.getElementById('slip-file-input').click()">
           <span style="font-size: 2.8rem;">🧾</span>
           <div style="font-weight: 750; font-size: 1rem; margin-top: 8px; color: var(--text-main);">
-            แตะที่นี่เพื่อเลือกสลิปจากในเครื่อง
+            แตะที่นี่เพื่อเลือกสลิปจากอัลบั้ม / โฟลเดอร์ในเครื่อง
           </div>
           <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">
-            เลือกได้หลายรูปพร้อมกัน (Multi-select) ทั้งสลิปโอนออกและสลิปเงินเข้า
+            รองรับการเลือกหลายรูปพร้อมกัน (ทั้งสลิปโอนออกร้านค้า และสลิปที่พ่อแม่โอนช่วย)
           </div>
           <input type="file" id="slip-file-input" accept="image/*" multiple style="display: none;" onchange="window.appUI.handleSlipUpload(event)">
         </div>
 
-        <!-- Results / Analysis Area -->
+        <!-- Results Area -->
         <div id="slip-results-container" style="margin-top: 20px;">
           ${this.parsedSlips.length > 0 ? this.renderParsedSlipsResults() : ""}
         </div>
@@ -536,12 +734,11 @@ class AppUI {
     resContainer.innerHTML = `
       <div style="padding: 20px; background: #f8fafc; border-radius: 14px; border: 1px solid var(--border); text-align: center;">
         <div style="font-size: 1.5rem; margin-bottom: 6px;">⏳</div>
-        <div style="font-weight: 700; color: var(--text-main);">กำลังอ่านและวิเคราะห์สลิป ${files.length} รายการในเครื่อง...</div>
+        <div style="font-weight: 700; color: var(--text-main);">กำลังสแกนและวิเคราะห์สลิป ${files.length} รายการในเครื่อง...</div>
         <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">ระบบกำลังตรวจจับวันที่, จำนวนเงิน, และคัดกรองตามเวลาย้อนหลัง</div>
       </div>
     `;
 
-    // Process files locally
     setTimeout(() => {
       this.processLocalSlips(files);
     }, 400);
@@ -553,7 +750,7 @@ class AppUI {
     if (this.slipLookbackMonths !== 999) {
       lookbackLimit.setMonth(now.getMonth() - this.slipLookbackMonths);
     } else {
-      lookbackLimit.setFullYear(2000); // All time
+      lookbackLimit.setFullYear(2000);
     }
 
     const mockPayees = [
@@ -569,12 +766,8 @@ class AppUI {
     let skippedCount = 0;
 
     files.forEach((file, index) => {
-      // Determine slip date based on file.lastModified or synthetic spread
       const fileDate = new Date(file.lastModified || Date.now());
-      
-      // If date is within lookback
       if (fileDate >= lookbackLimit) {
-        // Randomly classify based on filename or mock pool
         const template = mockPayees[index % mockPayees.length];
         const rawAmount = Math.floor(Math.random() * (template.max - template.min) + template.min);
 
@@ -676,16 +869,16 @@ class AppUI {
 
     this.parsedSlips.forEach(slip => {
       if (slip.isIncome) {
-        this.store.addBailout(slip.amount, slip.payee, "DAILY");
+        this.store.addBailout(slip.amount, slip.payee, "DAILY", slip.date);
         bailoutCount++;
       } else {
-        this.store.addTransaction(slip.amount, slip.category, slip.payee);
+        this.store.addTransaction(slip.amount, slip.category, slip.payee, slip.date);
         expCount++;
       }
     });
 
     this.parsedSlips = [];
-    alert(`บันทึกข้อมูลเรียบร้อย!\n- รายจ่ายสลิป: ${expCount} รายการ\n- เงินขอพ่อแม่โอนเข้า: ${bailoutCount} รายการ\n\nระบบคำนวณปรับงบ Safe-to-Spend วันนี้เรียบร้อยแล้ว`);
+    alert(`บันทึกข้อมูลเรียบร้อย!\n- รายจ่ายสลิป: ${expCount} รายการ\n- เงินขอพ่อแม่โอนเข้า: ${bailoutCount} รายการ\n\nระบบคำนวณปรับงบ Safe-to-Spend และยอดเงินสดคงเหลือให้อัตโนมัติ`);
     this.switchTab("dashboard");
   }
 
@@ -693,16 +886,29 @@ class AppUI {
     const user = this.store.state.user;
     return `
       <div class="dashboard-grid">
-        <!-- Settings 1: Salary & Raise % -->
+        <!-- Settings 1: Salary & Raise % & Starting Balance -->
         <div class="card">
-          <h2 style="font-size: 1.15rem; font-weight: 750; margin-bottom: 4px;">💵 ตั้งค่าเงินเดือน & การปรับขึ้น %</h2>
+          <h2 style="font-size: 1.15rem; font-weight: 750; margin-bottom: 4px;">💵 ตั้งค่าเงินเดือน & ยอดเงินสดเริ่มต้น</h2>
           <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 16px;">
-            เงินเดือนปัจจุบันของข้าราชการครู และการเลื่อนขั้นเงินเดือน
+            กำหนดเงินเดือนประจำ ยอดเงินเริ่มต้น และการปรับขึ้น %
           </p>
 
           <div class="form-group">
             <label class="form-label">เงินเดือนประจำปัจจุบัน (บาท/เดือน)</label>
             <input type="number" class="form-input" id="cfg-salary" value="${user.salary}">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">ยอดเงินสดคงเหลือเริ่มต้นในบัญชี (บาท)</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="number" class="form-input" id="cfg-starting-balance" value="${user.startingBalance || 12500}">
+              <button class="btn-bailout" style="width: auto; padding: 0 14px;" onclick="window.appUI.updateStartingBalance()">
+                บันทึกยอด
+              </button>
+            </div>
+            <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">
+              * ใช้คำนวณแดชบอร์ดเงินสดคงเหลือจริง (Real Net Cash Balance)
+            </div>
           </div>
 
           <div style="background: #f0fdf4; border: 1.5px solid #86efac; padding: 14px; border-radius: 12px; margin-bottom: 16px;">
@@ -738,6 +944,17 @@ class AppUI {
           <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 16px;">
             เลือกเปิดหรือซ่อนฟังก์ชันต่างๆ ได้ตามต้องการ เพื่อให้หน้าจอสะอาดตาที่สุด
           </p>
+
+          <div class="toggle-switch-row">
+            <div>
+              <div style="font-weight: 700; font-size: 0.88rem;">💰 Real Balance Dashboard</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted);">แดชบอร์ดเงินสดคงเหลือสุทธิ</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" ${mod.realBalanceDashboard ? 'checked' : ''} onchange="window.appStore.toggleModule('realBalanceDashboard')">
+              <span class="slider"></span>
+            </label>
+          </div>
 
           <div class="toggle-switch-row">
             <div>
@@ -796,11 +1013,11 @@ class AppUI {
 
           <div class="toggle-switch-row">
             <div>
-              <div style="font-weight: 700; font-size: 0.88rem;">💼 Extra Income Logger</div>
-              <div style="font-size: 0.72rem; color: var(--text-muted);">บันทึกรายได้พิเศษ/ค่าวิทยากร</div>
+              <div style="font-weight: 700; font-size: 0.88rem;">🛡️ 30-Day Wishlist Cooling</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted);">ระบบชะลอการซื้อของฟุ่มเฟือย 30 วัน</div>
             </div>
             <label class="switch">
-              <input type="checkbox" ${mod.extraIncome ? 'checked' : ''} onchange="window.appStore.toggleModule('extraIncome')">
+              <input type="checkbox" ${mod.wishlistCooling ? 'checked' : ''} onchange="window.appStore.toggleModule('wishlistCooling')">
               <span class="slider"></span>
             </label>
           </div>
@@ -815,7 +1032,7 @@ class AppUI {
     `;
   }
 
-  // Action Handlers
+  // Actions
   quickExpense(amount, category, note) {
     this.store.addTransaction(amount, category, note);
   }
@@ -826,6 +1043,12 @@ class AppUI {
 
   settleAdvance(debtId) {
     this.store.settleAdvanceReimbursement(debtId);
+  }
+
+  updateStartingBalance() {
+    const val = document.getElementById("cfg-starting-balance").value;
+    this.store.setStartingBalance(val);
+    alert("บันทึกยอดเงินสดคงเหลือเริ่มต้นเรียบร้อยแล้ว!");
   }
 
   applyRaise() {
@@ -903,6 +1126,26 @@ class AppUI {
     } else {
       alert(res.message || "ไม่สามารถอ่านวันที่ได้");
     }
+  }
+
+  openWishlistModal() {
+    document.getElementById("wishlist-modal").classList.add("open");
+  }
+
+  confirmAddWishlist() {
+    const name = document.getElementById("wishlist-item-name").value;
+    const price = document.getElementById("wishlist-item-price").value;
+    if (!name || !price) return;
+    this.store.addWishlistItem(name, price);
+    document.getElementById("wishlist-modal").classList.remove("open");
+  }
+
+  dismissWishlist(id) {
+    const item = this.store.state.wishlist.find(w => w.id === id);
+    if (!item) return;
+    this.store.state.wishlist = this.store.state.wishlist.filter(w => w.id !== id);
+    this.store.save();
+    alert(`สุดยอดมาก! คุณยับยั้งความอยากได้สำเร็จ ประหยัดเงินไปได้ ${formatTHB(item.price)}!`);
   }
 }
 

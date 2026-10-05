@@ -1,15 +1,22 @@
 /**
- * FinDiscipline - Core Business Logic & State Storage
- * Handles User's Real Context, Safe-to-Spend, Payday Calendar, Bailouts, and DSR Simulation
+ * FinDiscipline - Core Business Logic & State Storage (Enhanced v3)
+ * Full Integration of:
+ * - Real Balance Dashboard (ยอดเงินสดคงเหลือสะสม & Real Bank Balance)
+ * - Payday-Centric Calendar with Transaction Sync
+ * - 30-Day Wishlist Cooling-off with Opportunity Cost Calculator
+ * - Project Vault (งบโปรเจกต์ก้อนใหญ่ที่ขอพ่อแม่ แยกอิสระ)
+ * - Automated Slip Batch Scanner & Date Parser
+ * - Multi-Device Sync & Persistence
  */
 
-// Initial Seed Data based on User's real financial context
 const INITIAL_STATE = {
   user: {
     name: "คุณครู (ข้าราชการครู)",
     salary: 19690,
     salaryPayday: 25,
     lastRaisePercentage: 0,
+    // เงินสดเริ่มต้นในบัญชี (Initial Cash Balance)
+    startingBalance: 12500,
     emergencyPot: 0
   },
   salarySchedule: [
@@ -134,7 +141,7 @@ const INITIAL_STATE = {
     { id: "tx-3", date: "2026-10-04", amount: 80, category: "FOOD", note: "ข้าวเย็น" }
   ],
   bailouts: [
-    // ประวัติการขอเงินพ่อแม่
+    // ประวัติการขอเงินพ่อแม่รายวัน
     { id: "bl-1", date: "2026-10-02", amount: 200, note: "ค่าอาหารช่วงตึงตัว", type: "DAILY" }
   ],
   extraIncomes: [
@@ -142,9 +149,32 @@ const INITIAL_STATE = {
   ],
   projects: [
     // โปรเจกต์เงินก้อนที่ขอพ่อแม่
+    {
+      id: "proj-1",
+      name: "ทำสื่อการสอน & ปรับปรุงห้องเรียนดนตรีไทย",
+      targetBudget: 15000,
+      fundedByParents: 15000,
+      spent: 4200,
+      startDate: "2026-10-01",
+      status: "IN_PROGRESS"
+    }
+  ],
+  wishlist: [
+    // กฎชะลอการซื้อ 30 วัน
+    {
+      id: "wish-1",
+      name: "หูฟังตัดเสียงรบกวน AirPods Pro",
+      price: 8900,
+      addedDate: "2026-09-20",
+      coolOffDays: 30,
+      unlockDate: "2026-10-20",
+      status: "COOLING" // COOLING, PASSED, BOUGHT, DISCARDED
+    }
   ],
   modules: {
     safeToSpend: true,
+    realBalanceDashboard: true,
+    calendarView: true,
     dailyBailoutPad: true,
     debtCountdown: true,
     earlyDebtPayoff: true,
@@ -163,8 +193,11 @@ class Store {
     if (saved) {
       try {
         this.state = JSON.parse(saved);
-        // Ensure new module keys exist
+        // Ensure new module keys & projects/wishlist exist
         this.state.modules = { ...INITIAL_STATE.modules, ...(this.state.modules || {}) };
+        if (!this.state.projects) this.state.projects = INITIAL_STATE.projects;
+        if (!this.state.wishlist) this.state.wishlist = INITIAL_STATE.wishlist;
+        if (this.state.user.startingBalance === undefined) this.state.user.startingBalance = 12500;
       } catch (e) {
         this.state = JSON.parse(JSON.stringify(INITIAL_STATE));
       }
@@ -184,7 +217,7 @@ class Store {
     this.save();
   }
 
-  // Safe-to-Spend Calculations
+  // Safe-to-Spend & Cycle Calculations
   getCurrentBillingCycle() {
     const today = new Date();
     const currentMonth = today.getMonth() + 1; // 1-12
@@ -221,7 +254,9 @@ class Store {
       cycleEndDate,
       daysRemaining,
       totalDays,
-      currentDayIndex: totalDays - daysRemaining + 1
+      currentDayIndex: totalDays - daysRemaining + 1,
+      paydayThisMonth,
+      paydayNextMonth
     };
   }
 
@@ -251,19 +286,31 @@ class Store {
 
     // Bailout received today and total cycle
     const todayBailout = this.state.bailouts
-      .filter(b => b.date === todayStr)
+      .filter(b => b.date === todayStr && b.type === "DAILY")
       .reduce((sum, b) => sum + b.amount, 0);
 
-    const totalBailoutInCycle = this.state.bailouts.reduce((sum, b) => sum + b.amount, 0);
+    const totalBailoutInCycle = this.state.bailouts
+      .filter(b => b.type === "DAILY")
+      .reduce((sum, b) => sum + b.amount, 0);
 
     // Remaining Pure Salary Pool
     const remainingPurePool = Math.max(0, pureSalaryPool - totalSpentInCycle);
     const dailyPureSafeSpend = Math.max(0, Math.floor(remainingPurePool / cycle.daysRemaining));
 
     // Dynamic Safe to Spend Today
-    // If user has received today's bailout, it gives a temporary cushion
     const totalDailyAllowanceWithBailout = dailyPureSafeSpend + todayBailout;
     const remainingForToday = totalDailyAllowanceWithBailout - todaySpent;
+
+    // REAL CASH BALANCE CALCULATION (แดชบอร์ดเงินคงเหลือจริง)
+    // Starting Balance + Salary + Extra Incomes + All Bailouts - Debts Paid by Self - Fixed Expenses - Actual Daily Expenses
+    const allBailoutsTotal = this.state.bailouts.reduce((sum, b) => sum + b.amount, 0);
+    const realCashBalance = (this.state.user.startingBalance || 0) 
+      + this.state.user.salary 
+      + totalExtraIncomes 
+      + allBailoutsTotal 
+      - totalDebtInstallmentPaidBySelf 
+      - totalFixedExpenses 
+      - totalSpentInCycle;
 
     // DSR Calculations (Official NCB vs Real)
     // NCB debts: GSB loan (2,200) + iPhone (2,300) = 4,500 THB
@@ -305,16 +352,17 @@ class Store {
       projectedOfficialDSRWithGHB: Math.round(projectedOfficialDSRWithGHB * 100) / 100,
       isGHBEligible,
       pendingAdvances,
-      totalPendingAdvanceAmount
+      totalPendingAdvanceAmount,
+      realCashBalance
     };
   }
 
   // Actions
-  addTransaction(amount, category, note) {
-    const todayStr = new Date().toISOString().split("T")[0];
+  addTransaction(amount, category, note, dateStr = null) {
+    const targetDate = dateStr || new Date().toISOString().split("T")[0];
     this.state.transactions.unshift({
-      id: "tx-" + Date.now(),
-      date: todayStr,
+      id: "tx-" + Date.now() + "-" + Math.random().toString(36).substr(2, 4),
+      date: targetDate,
       amount: parseFloat(amount),
       category: category || "FOOD",
       note: note || ""
@@ -322,11 +370,11 @@ class Store {
     this.save();
   }
 
-  addBailout(amount, note, type = "DAILY") {
-    const todayStr = new Date().toISOString().split("T")[0];
+  addBailout(amount, note, type = "DAILY", dateStr = null) {
+    const targetDate = dateStr || new Date().toISOString().split("T")[0];
     this.state.bailouts.unshift({
-      id: "bl-" + Date.now(),
-      date: todayStr,
+      id: "bl-" + Date.now() + "-" + Math.random().toString(36).substr(2, 4),
+      date: targetDate,
       amount: parseFloat(amount),
       note: note || "ขอเงินพ่อแม่",
       type: type
@@ -334,13 +382,43 @@ class Store {
     this.save();
   }
 
-  addExtraIncome(amount, note) {
-    const todayStr = new Date().toISOString().split("T")[0];
+  addExtraIncome(amount, note, dateStr = null) {
+    const targetDate = dateStr || new Date().toISOString().split("T")[0];
     this.state.extraIncomes.unshift({
       id: "inc-" + Date.now(),
-      date: todayStr,
+      date: targetDate,
       amount: parseFloat(amount),
       note: note || "รายได้พิเศษ/ค่าวิทยากร"
+    });
+    this.save();
+  }
+
+  addWishlistItem(name, price) {
+    const now = new Date();
+    const unlock = new Date();
+    unlock.setDate(now.getDate() + 30);
+
+    this.state.wishlist.unshift({
+      id: "wish-" + Date.now(),
+      name: name,
+      price: parseFloat(price),
+      addedDate: now.toISOString().split("T")[0],
+      coolOffDays: 30,
+      unlockDate: unlock.toISOString().split("T")[0],
+      status: "COOLING"
+    });
+    this.save();
+  }
+
+  addProject(name, budget, parentSupport) {
+    this.state.projects.unshift({
+      id: "proj-" + Date.now(),
+      name: name,
+      targetBudget: parseFloat(budget),
+      fundedByParents: parseFloat(parentSupport || budget),
+      spent: 0,
+      startDate: new Date().toISOString().split("T")[0],
+      status: "IN_PROGRESS"
     });
     this.save();
   }
@@ -354,11 +432,9 @@ class Store {
     debt.balance = 0;
     debt.remainingMonths = 0;
 
-    // Log transaction if self-paid
     if (payer === "SELF") {
       this.addTransaction(actualAmount || debt.balance, "DEBT_PAYOFF", `ปิดหนี้: ${debt.name}`);
     } else {
-      // If parents paid, record in bailouts as special payoff
       this.state.bailouts.unshift({
         id: "bl-payoff-" + Date.now(),
         date: new Date().toISOString().split("T")[0],
@@ -437,7 +513,6 @@ class Store {
     }
 
     if (parsed.length > 0) {
-      // Merge with state schedule
       parsed.forEach(p => {
         const idx = this.state.salarySchedule.findIndex(s => s.month === p.month);
         if (idx !== -1) {
@@ -458,6 +533,11 @@ class Store {
       this.state.modules[moduleKey] = value !== undefined ? value : !this.state.modules[moduleKey];
       this.save();
     }
+  }
+
+  setStartingBalance(amount) {
+    this.state.user.startingBalance = parseFloat(amount) || 0;
+    this.save();
   }
 }
 
