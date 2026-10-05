@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>FinDiscipline - บริหารการเงิน & วินัยกระแสเงินสด</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Top Header Navigation -->
+  <header class="app-container top-header">
+    <div class="brand-badge">
+      <div class="brand-logo">฿</div>
+      <div class="brand-title">
+        <h1>FinDiscipline</h1>
+        <p>วินัยกระแสเงินสด & กู้บ้าน ธอส.</p>
+      </div>
+    </div>
+    <div id="device-tag" class="device-indicator">
+      📱 Mobile View
+    </div>
+  </header>
+
+  <!-- Main Content Render Area -->
+  <main id="main-content" class="app-container">
+    <!-- Rendered dynamically by AppUI -->
+  </main>
+
+  <!-- Bottom Navigation Bar (iOS / PWA) -->
+  <nav class="bottom-nav">
+    <button class="nav-tab active" data-tab="dashboard">
+      <span class="nav-icon">🎯</span>
+      <span>งบวันนี้</span>
+    </button>
+    <button class="nav-tab" data-tab="debts">
+      <span class="nav-icon">⏳</span>
+      <span>หนี้สิน</span>
+    </button>
+    <button class="nav-tab" data-tab="ghb">
+      <span class="nav-icon">🏠</span>
+      <span>กู้บ้าน ธอส.</span>
+    </button>
+    <button class="nav-tab" data-tab="scanner">
+      <span class="nav-icon">📸</span>
+      <span>อ่านสลิป</span>
+    </button>
+    <button class="nav-tab" data-tab="settings">
+      <span class="nav-icon">⚙️</span>
+      <span>ตั้งค่า</span>
+    </button>
+  </nav>
+
+  <!-- Modals -->
+
+  <!-- Modal 1: Early Payoff Modal -->
+  <div id="early-payoff-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-payoff-title" class="modal-title">⚡ ปิดหนี้ก่อนกำหนด</h3>
+        <button class="btn-close">✕</button>
+      </div>
+      <input type="hidden" id="payoff-debt-id">
+      
+      <div class="form-group">
+        <label class="form-label">ใครเป็นคนปิดหนี้ก้อนนี้ให้?</label>
+        <div style="display: flex; gap: 12px; margin-top: 6px;">
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 0.88rem; cursor: pointer;">
+            <input type="radio" name="payoff-payer" value="PARENTS" checked>
+            <span>พ่อแม่ช่วยปิดให้ (ไม่หักเงินเดือน)</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 0.88rem; cursor: pointer;">
+            <input type="radio" name="payoff-payer" value="SELF">
+            <span>ใช้เงินเก็บตัวเองปิด</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">ยอดเงินที่ใช้ปิดจริง (บาท)</label>
+        <input type="number" id="payoff-amount" class="form-input">
+      </div>
+
+      <button class="btn-primary" onclick="window.appUI.confirmEarlyPayoff()">
+        ยืนยันปิดหนี้และปลดล็อกกระแสเงินสด
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal 2: Custom Micro-Bailout Modal -->
+  <div id="custom-bailout-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">🆘 ขอเงินพ่อแม่เสริมงบวันนี้</h3>
+        <button class="btn-close">✕</button>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">จำนวนเงินที่ขอ (บาท)</label>
+        <input type="number" id="custom-bailout-amount" class="form-input" placeholder="เช่น 250">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">หมายเหตุ / เหตุผลสั้นๆ</label>
+        <input type="text" id="custom-bailout-note" class="form-input" placeholder="เช่น เติมน้ำมัน, กินข้าวเย็น">
+      </div>
+
+      <button class="btn-primary" style="background: #d97706;" onclick="window.appUI.confirmCustomBailout()">
+        บันทึกยอดเงินช่วยเหลือ
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal 3: Custom Expense Modal -->
+  <div id="custom-expense-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">💸 บันทึกรายจ่าย</h3>
+        <button class="btn-close">✕</button>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">จำนวนเงิน (บาท)</label>
+        <input type="number" id="custom-exp-amount" class="form-input" placeholder="เช่น 75">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">หมวดหมู่</label>
+        <select id="custom-exp-cat" class="form-select">
+          <option value="FOOD">อาหาร / กับข้าว</option>
+          <option value="DRINK">เครื่องดื่ม / กาแฟ</option>
+          <option value="TRAVEL">การเดินทาง / น้ำมัน</option>
+          <option value="MISC">ของใช้ / ทั่วไป</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">รายละเอียด</label>
+        <input type="text" id="custom-exp-note" class="form-input" placeholder="เช่น ชานมไข่มุก">
+      </div>
+
+      <button class="btn-primary" onclick="window.appUI.confirmCustomExpense()">
+        บันทึกรายจ่าย
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal 4: Extra Income Modal -->
+  <div id="extra-income-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">💼 บันทึกรายได้พิเศษ</h3>
+        <button class="btn-close">✕</button>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">จำนวนเงินที่ได้รับ (บาท)</label>
+        <input type="number" id="extra-inc-amount" class="form-input" placeholder="เช่น 3000">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">ที่มาของรายได้</label>
+        <input type="text" id="extra-inc-note" class="form-input" placeholder="เช่น ค่าวิทยากรค่ายวิชาการ">
+      </div>
+
+      <button class="btn-primary" style="background: #059669;" onclick="window.appUI.confirmExtraIncome()">
+        เพิ่มเข้ารอบงบประมาณ
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal 5: Paste Calendar Modal -->
+  <div id="paste-calendar-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">📋 วางข้อความปฏิทินเงินเดือน</h3>
+        <button class="btn-close">✕</button>
+      </div>
+      
+      <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px;">
+        คัดลอกตารางจากประกาศกรมบัญชีกลางหรือ LINE มาวางในช่องนี้ ระบบจะเชื่อมโยงเข้าปฏิทินทั้ง 12 เดือนทันที
+      </p>
+
+      <div class="form-group">
+        <textarea id="paste-calendar-text" class="form-textarea" rows="7" placeholder="ตัวอย่าง:&#10;มกราคม : 26 ม.ค. 70&#10;กุมภาพันธ์ : 23 ก.พ. 70&#10;มีนาคม : 26 มี.ค. 70&#10;เมษายน : 27 เม.ย. 70"></textarea>
+      </div>
+
+      <button class="btn-primary" onclick="window.appUI.confirmPasteCalendar()">
+        ตรวจจับวันที่ & เชื่อมโยงปฏิทิน
+      </button>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/store.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
